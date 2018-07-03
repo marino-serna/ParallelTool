@@ -41,7 +41,7 @@ In this class will implement how the application persist data, and how the appli
 
     ii.	Every previous parameter will be adapted as:
 
-    val parameterName = parallelTool.get("nameOfTheMethodThatProduceThisParameter”, instanceOfTheClaseWhereThisMethodIsLocated)
+    val parameterName = parallelTool.get("nameOfTheMethodThatProduceThisParameter”, instanceOfTheClassWhereThisMethodIsLocated)
 
     Is important to mention that the Method that produce this parameter must be one of the main methods.
 
@@ -53,7 +53,9 @@ In this class will implement how the application persist data, and how the appli
         Otherwise  will use an annotation like:
         @Store(temporal = true)
 
-    v.	Optional but recommended, is adding an annotation with the time that this method takes to be executed, if the application is executed with the logs activated in parallelTool, the real value will be printed. This is use to optimize the sorting of methods and find critical paths.
+    v.	Optional but recommended, adding an annotation with the time that this method takes to be executed,
+        if the application is executed with the logs activated in parallelTool, the real value will be printed.
+        This is use to optimize the sorting of methods and finding critical paths. Example:
         @PriorityExecution(expectedExecutionTime = 66036)
 
 3.  The application will be started like:
