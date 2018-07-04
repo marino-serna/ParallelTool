@@ -58,7 +58,7 @@ In this class will implement how the application persist data, and how the appli
         This is use to optimize the sorting of methods and finding critical paths. Example:
         @PriorityExecution(expectedExecutionTime = 66036)
 
-3.  The application will be started like:
+3.  The application will be started as follow:
 
         val storage:MyStorage = new MyStorage
         val parallelTool = new ParallelTool(sparkSession, storage)
@@ -68,4 +68,30 @@ In this class will implement how the application persist data, and how the appli
         parallelTool.startApplication(classToExecute1 :: classToExecute2 :: classToExecute3 :: Nil)
 
 
+## Extra functionality
 
+Some methods require the execution of a set of methods that produce temporal DataFrames that no one else will use.
+In this situation is possible to use functionality “parallelNoDependencies”.
+This functionality is useful only in a very limited scenario, assuming that the target is produce the most optimal application that is possible, but that times is better to use it
+
+This functionality has some advantages:
+-	Faster: is using only memory, and the implementation allow faster execution of the code.
+-	Clarity: make easy to everyone that read the method that these DataFrames won’t be use outside of this Method.
+
+On the other hand, have some disadvantages:
+-	Memory: all the DataFrames will be stored in memory during the execution, that means that if can’t fit on memory you could have risk of reprocessing the DataFrame.
+This issue is theatrical, during my tests that never happen but be aware of the risk.
+-	If one of the DataFrames that is processed required far more time that the rest of the process this could delay the execution. Using this functionality this set of methods will start at the same time, and the application will continue after all are completed.
+
+* The functionality will be use as follow:
+
+        val functionsToExecute =
+        ("function1", parameter1a :: Nil) ::
+        ("function2", parameter2a :: parameter2b :: parameter2c :: Nil) ::
+        ("function3", parameter3a :: parameter3b :: Nil) ::
+        Nil
+
+        val (resultDF1 ::
+        resultDF2 ::
+        resultDF3 ::
+        _ ) = parallelTool.parallelNoDependencies(this, functionsToExecute)
