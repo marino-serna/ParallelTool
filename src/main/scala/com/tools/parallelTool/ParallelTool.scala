@@ -145,7 +145,6 @@ class ParallelTool (spark: SparkSession, storage:Storage, logs:Boolean = false, 
         case ex: Throwable =>
           logger.error(s"ERROR in method $methodName: ${ex.getMessage}")
           ex.printStackTrace()
-          logger.error(s"ERROR in method $methodName: ${ex.getStackTrace.mkString("|")}")
           System.exit(-1)
           throw ex
       }
@@ -204,7 +203,7 @@ class ParallelTool (spark: SparkSession, storage:Storage, logs:Boolean = false, 
             updatePriority(sorted ::: currentElement, updatedPriority,0)
           }else{
             if(notPossible > unSorted.size){
-              val error = s"There is a loop with the dependencies of: ${unSorted.map(x=>x._2).mkString(" | ")}"
+              val error = s"Found a loop with the dependencies: ${unSorted.map(x=>x._2).mkString(" | ")} while updating the priority"
               logger.error(error)
               throw new Exception(error)
             }else{
@@ -227,19 +226,26 @@ class ParallelTool (spark: SparkSession, storage:Storage, logs:Boolean = false, 
         case Nil => sorted
         case remaining :List[(T,String,List[String])] =>
           val (_,_,dependencies):(T,String,List[String]) = remaining.head
-          val possible = dependencies.forall(dependency => sorted.map(x => x._2).contains(dependency))
+          val dependenciesProcessed = dependencies.forall(dependency => sorted.map(x => x._2).contains(dependency))
           val currentElement:List[(T,String,List[String])] = unSorted.head :: Nil
-          if(possible){
+          if(dependenciesProcessed){
             sortListOfFunctions(sorted ::: currentElement, unSorted.tail,0)
           }else{
-            if(notPossible > unSorted.size){
-              val error = s"There is a loop with the dependencies of: ${unSorted.map(x=>x._2).mkString(" | ")}"
-              logger.error(error)
-              throw new Exception(error)
+            val dependenciesPending = dependencies.exists(dependency => unSorted.map(x => x._2).contains(dependency))
+            if(dependenciesPending){
+              if(notPossible > unSorted.size){
+                val error = s"Found a loop with the dependencies: ${unSorted.map(x=>x._2).mkString(" | ")} while sorting functions"
+                logger.error(error)
+                throw new Exception(error)
+              }else{
+                sortListOfFunctions(sorted, unSorted.tail ::: currentElement, notPossible + 1)
+              }
             }else{
-              sortListOfFunctions(sorted, unSorted.tail ::: currentElement, notPossible + 1)
+              val error = s"Some of the dependencies: ${dependencies.mkString(" | ")} will not be executed," +
+                s"Ensure that the data produced by this methods is available"
+              logger.debug(error)
+              sortListOfFunctions(sorted ::: currentElement, unSorted.tail,0)
             }
-
           }
       }
     }
@@ -351,9 +357,17 @@ class ParallelTool (spark: SparkSession, storage:Storage, logs:Boolean = false, 
         if(logs) logger.info(s"out waiting($functionName)")
         res
       case _ =>
-        val error = s"The function: $functionName need to be executed, please review the list of functions to execute: ${functionsToExecute.mkString(" | ")}}"
-        logger.error(error)
-        throw new Exception(error)
+        if(functionsToExecute.contains(functionName)){
+          val error = s"Error with the execution of the function: $functionName, flag is not available"
+          logger.error(error)
+          throw new Exception(error)
+        }else{
+          val error = s"The function: $functionName is not scheduled to be executed, " +
+            s"Ensure that the data produced by this methods is available." +
+            s"The full list of functions to be executed is: ${functionsToExecute.mkString(" | ")}}"
+          logger.debug(error)
+          true
+        }
     }
   }
 
