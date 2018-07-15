@@ -2,7 +2,7 @@ import sbt.Keys.organization
 
 lazy val root = (project in file(".")).
   settings(
-    name := "parallel-tool",
+    name := "ParallelTool",
     version := "1.0.0-00",
     scalaVersion := "2.11.8",
 

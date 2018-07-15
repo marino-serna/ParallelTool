@@ -1,4 +1,4 @@
-package com.tools.parallelTool
+package com.github.marino_serna.parallel_tool
 
 import org.apache.spark.sql.DataFrame
 

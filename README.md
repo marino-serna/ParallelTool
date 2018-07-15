@@ -28,7 +28,7 @@ Also depending on the cluster that is available, the application will have more 
 
 How to use this tool?
 
-1.	Create your personal storage class, by extending the class: “com.tools.parallelTool.Storage”
+1.	Create your personal storage class, by extending the class: “com.github.marino_serna.parallel_tool.Storage”
 In this class will implement how the application persist data, and how the application read data already persisted.
 
 2.	Locate and adapt all the methods that will be queued to be executed:

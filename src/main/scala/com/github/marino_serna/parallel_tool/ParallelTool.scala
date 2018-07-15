@@ -1,4 +1,4 @@
-package com.tools.parallelTool
+package com.github.marino_serna.parallel_tool
 
 import java.lang.reflect.Method
 
@@ -166,7 +166,7 @@ class ParallelTool (spark: SparkSession, storage:Storage, logs:Boolean = false, 
       */
     def getAllFunctions:List[String]={
       klass.getClass.getMethods.toList.filter(function => {
-        function.getParameterTypes.length == 1 && function.getParameterTypes.head.getName == "com.tools.parallelTool.ParallelTool"
+        function.getParameterTypes.length == 1 && function.getParameterTypes.head.getName == "com.github.marino_serna.parallel_tool.ParallelTool"
       }).map(_.getName)
     }
   }
