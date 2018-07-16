@@ -28,12 +28,20 @@ Also depending on the cluster that is available, the application will have more 
 
 How to use this tool?
 
-1.	Create your personal storage class, by extending the class: “com.github.marino_serna.parallel_tool.Storage”
-In this class will implement how the application persist data, and how the application read data already persisted.
+1. Add the dependencies in to your project:
+  - https://mvnrepository.com/artifact/com.github.marino-serna/parallel-tool/1.0.0-02
 
-2.	Locate and adapt all the methods that will be queued to be executed:
+2. Import the required classes:
+  - import com.github.marino_serna.parallel_tool._
 
-  a.	That is all main methods of the application. Ideally every one of these methods will produce one DataFrame that is use by other methods or will be persisted.
+3.	Create your own storage class, by extending the class: “com.github.marino_serna.parallel_tool.Storage”
+This class will implement how the application persist data, and how the application read data already persisted.
+A useful example of implementation can be found in:
+  - com.github.marino_serna.parallel_tool.DataBaseStorage
+
+4.	Locate and adapt all the methods that will be queued to be executed:
+
+  a.	That is all _main_ methods of the application. Ideally every one of these methods will produce one DataFrame that is use by other methods or will be persisted.
 
   b.	These methods:
 
@@ -58,7 +66,7 @@ In this class will implement how the application persist data, and how the appli
         This is use to optimize the sorting of methods and finding critical paths. Example:
         @PriorityExecution(expectedExecutionTime = 66036)
 
-3.  The application will be started as follow:
+5.  The application will be started as follow:
 
         val storage:MyStorage = new MyStorage
         val parallelTool = new ParallelTool(sparkSession, storage)
