@@ -2,7 +2,7 @@
 # ParallelTool
 
 ## Introduction
-Tool design to speed up applications and increase the intensity of use the cluster.
+Tool design to speed up Spark applications and increase the intensity of use the cluster.
 
 The target of this tool is optimizing the use of the cluster, increasing the parallelization that spark does.
 
