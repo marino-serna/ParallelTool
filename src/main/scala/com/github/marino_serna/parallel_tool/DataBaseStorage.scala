@@ -69,7 +69,7 @@ class DataBaseStorage(spark: SparkSession, databasePath: String) extends Storage
         val schema :: table :: _ = schemaAndTable.split('.').toList
 
         partitions.map(partitionField => (partitionField, dF.select(partitionField).distinct()))
-          .foldLeft(("/",dF)::Nil :List[(String,DataFrame)])(
+          .foldLeft(("/","",dF)::Nil :List[(String, String, DataFrame)])(
             (processed,current) => {
               val partitionField = current._1
               val partitionValues = current._2.collect().map(_(0).toString).toList
@@ -77,20 +77,32 @@ class DataBaseStorage(spark: SparkSession, databasePath: String) extends Storage
               partitionValues.map(partitionValue =>
                 processed.map(partitioned => {
                   val previousPartitionPath = partitioned._1
-                  val dataBelongingToPartition:DataFrame = partitioned._2
+                  val previousPartitionAdd = partitioned._2
+                  val dataBelongingToPartition:DataFrame = partitioned._3
 
                   (s"${previousPartitionPath}${partitionField}=$partitionValue/",
+                    previousPartitionAdd match{
+                      case "" =>s"${partitionField}='$partitionValue'"
+                      case _ =>s"${previousPartitionAdd}, ${partitionField}='$partitionValue'"
+                    },
                     dataBelongingToPartition.filter($"${partitionField}" === partitionValue))
+
                 })
-              ).foldLeft(Nil:List[(String,DataFrame)])((ready,processing) => processing ::: ready )
+              ).foldLeft(Nil:List[(String, String, DataFrame)])((ready,processing) => processing ::: ready )
             }).par.map(partition => {
           val partitionPath = partition._1
-          val dataBelongingToPartition:DataFrame = partition._2
+          val partitionAdd = partition._2
+          val dataBelongingToPartition:DataFrame = partition._3
 
           dataBelongingToPartition.write.format("parquet").mode(SaveMode.Overwrite)
             .save(s"$databasePath${schema}/$table$partitionPath")
-        }
-        )
+
+          if (partitions.nonEmpty) {
+            val addPartition = s"ALTER TABLE $schemaAndTable ADD IF NOT EXISTS PARTITION ($partitionAdd)"
+            println(addPartition)
+            spark.sql(addPartition)
+          }
+        })
       }else{
         dF.write.format("parquet").mode(SaveMode.Overwrite).partitionBy(partitions:_*).saveAsTable(schemaAndTable)
       }
