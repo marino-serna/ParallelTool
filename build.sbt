@@ -3,7 +3,7 @@ import sbt.Keys.organization
 lazy val root = (project in file(".")).
   settings(
     name := "parallel-tool",
-    version := "1.0.0-02",
+    version := "1.0.1-00",
     scalaVersion := "2.11.8",
 
     organization := "com.github.marino-serna",

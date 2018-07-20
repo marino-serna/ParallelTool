@@ -2,7 +2,7 @@ package com.github.marino_serna.parallel_tool
 
 import java.lang.reflect.Method
 
-import org.apache.log4j.Logger
+import org.apache.log4j.{Logger,Level}
 import org.apache.spark.sql.{DataFrame, SparkSession}
 import org.apache.spark.storage.StorageLevel
 
@@ -20,8 +20,9 @@ import scala.util.Failure
   * @param logs print logs for the execution, including duration of the functions
   * @param futuresWithoutDependencies allow to use or not use futures when calling parallelNoDependencies, both solutions are valid
   */
-class ParallelTool (spark: SparkSession, storage:Storage, logs:Boolean = false, futuresWithoutDependencies:Boolean=true){
+class ParallelTool (spark: SparkSession, storage:Storage, level:Level = Level.INFO, futuresWithoutDependencies:Boolean=true){
   private val logger: Logger = Logger.getLogger(getClass.getName)
+  logger.setLevel(level)
   private var futures:Map[String,Future[DataFrame]] = Map[String, Future[DataFrame]]()
   private var promises:Map[String,Promise[DataFrame]] = Map[String, Promise[DataFrame]]()
   private var futuresFlags:Map[String,Future[Boolean]] = Map[String, Future[Boolean]]()
@@ -118,22 +119,22 @@ class ParallelTool (spark: SparkSession, storage:Storage, logs:Boolean = false, 
       */
     def call[T<:Object, A: TypeTag](methodName:String,args:AnyRef*):DataFrame = {
       try {
-        if(logs) logger.info(s"Prepare function: $methodName")
+        logger.debug(s"Prepare function: $methodName")
         def argTypes = args.map(_.getClass)
         def method = klass.getClass.getMethod(methodName, argTypes:_*)
         val timeOrig = System.currentTimeMillis()
 
         waitFinishAnnotations(method)
-        if(logs) logger.info(s"In call function: $methodName")
+        logger.debug(s"In call function: $methodName")
 
         val dfResult:DataFrame = method.invoke(klass,args: _*).asInstanceOf[DataFrame]//.persist(StorageLevel.OFF_HEAP)
         val timeEnd = System.currentTimeMillis()
         val timeMin = (timeEnd-timeOrig) /1000/60.0
-        if(logs) logger.info(f"duration function $methodName: $timeMin%.2f min (${timeEnd-timeOrig}ns)")
+        logger.info(f" Duration function $methodName: $timeMin%.2f min (${timeEnd-timeOrig}ns)")
 
         finish(method, methodName, dfResult)
 
-        if(logs) logger.info(s"End call function: $methodName")
+        logger.debug(s"End call function: $methodName")
         dfResult
       } catch {
         case ex:ClassCastException =>
@@ -279,18 +280,18 @@ class ParallelTool (spark: SparkSession, storage:Storage, logs:Boolean = false, 
 
     val listOfFunctionsSorted = sortListOfFunctions(fullListFunctions.filter(x=>x._3.isEmpty),fullListFunctions.filter(x=> x._3.nonEmpty),0)
 
-    if(logs) logger.info(s"${listOfFunctionsSorted.size} execution order: ${listOfFunctionsSorted.map(x=>x._2).mkString(" | ")}")
+    logger.info(s"${listOfFunctionsSorted.size} execution order: ${listOfFunctionsSorted.map(x=>x._2).mkString(" | ")}")
     val thisParallel = this
     var execution:List[Thread] = listOfFunctionsSorted.map(methodToExecute =>{
       new Thread(new Runnable{def run() {methodToExecute._1 call (methodToExecute._2, thisParallel)}})
     })
     execution.foreach(_.start())
 
-    if(logs) logger.info(s"functions to process: ${execution.size} ")
+    logger.debug(s"functions to process: ${execution.size} ")
     while(execution.nonEmpty) {
       execution.head.join()
       execution = execution.filter(fut => fut.isAlive)
-      if(logs) logger.info(s"remaining functions to process: ${execution.size} ")
+      logger.debug(s"remaining functions to process: ${execution.size} ")
     }
 
     val functionsWithErrors:List[String] = promisesFlags.keySet.filter(functionName => !isNotFail(functionName)).toList
@@ -352,9 +353,9 @@ class ParallelTool (spark: SparkSession, storage:Storage, logs:Boolean = false, 
   private def waitFinish(functionName:String):Boolean={
     futuresFlags.get(functionName) match {
       case Some(promise) =>
-        if(logs) logger.info(s"in waiting($functionName)")
+        logger.debug(s"in waiting($functionName)")
         val res:Boolean = Await.result(promise, Duration.Inf)
-        if(logs) logger.info(s"out waiting($functionName)")
+        logger.debug(s"out waiting($functionName)")
         res
       case _ =>
         if(functionsToExecute.contains(functionName)){
@@ -380,17 +381,17 @@ class ParallelTool (spark: SparkSession, storage:Storage, logs:Boolean = false, 
     * @return (Schema, name, partitions) :: Nil
     */
   def getSource(method:Method):List[(String,String, List[String])]={
-      method.getDeclaredAnnotations.toList.map {
-        case schema: Store =>
-          if (schema.temporal()) {
-            Nil
-          } else if (schema.schema().isEmpty || schema.name().isEmpty) {
-            Nil
-          } else {
-            (schema.schema(), schema.name(), schema.partitions().toList) :: Nil
-          }
-        case _ => Nil
-      }.foldLeft(Nil:List[(String,String,List[String])])((accumulated, current) => accumulated ::: current)
+    method.getDeclaredAnnotations.toList.map {
+      case schema: Store =>
+        if (schema.temporal()) {
+          Nil
+        } else if (schema.schema().isEmpty || schema.name().isEmpty) {
+          Nil
+        } else {
+          (schema.schema(), schema.name(), schema.partitions().toList) :: Nil
+        }
+      case _ => Nil
+    }.foldLeft(Nil:List[(String,String,List[String])])((accumulated, current) => accumulated ::: current)
   }
 
   /**
@@ -417,24 +418,24 @@ class ParallelTool (spark: SparkSession, storage:Storage, logs:Boolean = false, 
       case (schemaName,tableName, partitions) :: _ =>
         storage.write(schemaName, tableName, value, partitions)
     }
-    def error():Unit={
+    def warning():Unit={
       // this could be and error, but also happens in a correct execution, like when using parallelNoDependencies
-      val error = s"One function is trying write a value in the name of a function ($functionName) that is not plan to be executed, " +
+      val warning = s"One function is trying write a value in the name of a function ($functionName) that is not plan to be executed, " +
         s"please review the list of functions to execute and the functions that addData to ($functionName)"
-      logger.debug(error)
+      logger.warn(warning)
     }
 
     promises.get(functionName) match {
       case Some(promise) =>
         promise success value
       case _ =>
-        error()
+        warning()
     }
     promisesFlags.get(functionName) match {
       case Some(promise) =>
         promise success true
       case _ =>
-        error()
+        warning()
     }
   }
 
@@ -455,7 +456,7 @@ class ParallelTool (spark: SparkSession, storage:Storage, logs:Boolean = false, 
       getParallelMethod(thisParallel)
     }
 
-    if(logs) logger.info(s"get($methodName, ${klass.getClass.getName})")
+    logger.debug(s"get($methodName, ${klass.getClass.getName})")
 
     def method = getParallelMethod()
     waitFinish(methodName)
@@ -476,13 +477,13 @@ class ParallelTool (spark: SparkSession, storage:Storage, logs:Boolean = false, 
       }
     }catch{
       case ex:Throwable =>
-        if(logs) logger.error(f"catch from disk get($methodName)")
+        logger.error(f"Error when obtening the result of the method $methodName")
         ex.printStackTrace()
         throw ex
     }
     val timeEnd = System.currentTimeMillis()
     val timeMin = (timeEnd-timeOrig) /1000/60.0
-    if(logs) logger.info(f"duration get($methodName): $timeMin%.2f min (${timeEnd-timeOrig}ns)")
+    logger.debug(f"duration get($methodName): $timeMin%.2f min (${timeEnd-timeOrig}ns)")
     finalRes
   }
 
@@ -516,13 +517,13 @@ class ParallelTool (spark: SparkSession, storage:Storage, logs:Boolean = false, 
     */
   def parallelNoDependencies[T<:Object, A: TypeTag](classToExecute:T, functions:List[(String,List[AnyRef])]):List[DataFrame] ={
     val dfResults = if(futuresWithoutDependencies){
-      if(logs) logger.info(s"parallelNoDependenciesWithoutFutures: ${functions.mkString(" | ")}")
+      logger.debug(s"parallelNoDependenciesWithoutFutures: ${functions.mkString(" | ")}")
       parallelNoDependenciesWithoutFutures(classToExecute, functions)
     }else{
-      if(logs) logger.info(s"parallelNoDependenciesWithFutures: ${functions.mkString(" | ")}")
+      logger.debug(s"parallelNoDependenciesWithFutures: ${functions.mkString(" | ")}")
       parallelNoDependenciesWithFutures(classToExecute, functions)
     }
-    if(logs) logger.info(s"End parallelNoDependencies : ${functions.mkString(" | ")}")
+    logger.info(s"End parallelNoDependencies : ${functions.mkString(" | ")}")
     dfResults
   }
 
