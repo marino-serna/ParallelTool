@@ -29,7 +29,7 @@ Also depending on the cluster that is available, the application will have more 
 How to use this tool?
 
 1. Add the dependencies in to your project:
-  - https://mvnrepository.com/artifact/com.github.marino-serna/parallel-tool/1.0.0-02
+  - https://mvnrepository.com/artifact/com.github.marino-serna/parallel-tool/1.0.1-00
 
 2. Import the required classes:
   - import com.github.marino_serna.parallel_tool._
