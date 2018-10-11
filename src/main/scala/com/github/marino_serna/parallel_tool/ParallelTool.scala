@@ -17,7 +17,7 @@ import scala.util.Failure
   * @author Marino Serna Sanmamed
   * @param spark SparkSession
   * @param storage will be use to read and write
-  * @param logs print logs for the execution, including duration of the functions
+  * @param level print logs for the execution, including duration of the functions
   * @param futuresWithoutDependencies allow to use or not use futures when calling parallelNoDependencies, both solutions are valid
   */
 class ParallelTool (spark: SparkSession, storage:Storage, level:Level = Level.INFO, futuresWithoutDependencies:Boolean=true){
@@ -128,13 +128,15 @@ class ParallelTool (spark: SparkSession, storage:Storage, level:Level = Level.IN
         logger.debug(s"In call function: $methodName")
 
         val dfResult:DataFrame = method.invoke(klass,args: _*).asInstanceOf[DataFrame]//.persist(StorageLevel.OFF_HEAP)
-        val timeEnd = System.currentTimeMillis()
-        val timeMin = (timeEnd-timeOrig) /1000/60.0
-        logger.info(f" Duration function $methodName: $timeMin%.2f min (${timeEnd-timeOrig}ns)")
+
+        logger.debug(s"Write function: $methodName")
 
         finish(method, methodName, dfResult)
 
-        logger.debug(s"End call function: $methodName")
+        val timeEnd = System.currentTimeMillis()
+        val timeMin = (timeEnd-timeOrig) /1000/60.0
+        logger.info(f" End function $methodName; Duration: $timeMin%.2f min (${timeEnd-timeOrig}ns)")
+
         dfResult
       } catch {
         case ex:ClassCastException =>
@@ -492,7 +494,7 @@ class ParallelTool (spark: SparkSession, storage:Storage, level:Level = Level.IN
     *
     * This logic is far simpler and works great when inside one method is required to process a list of methods and use the results only in that method.
     * The output of this methods has been tested in conditions where is possible to fit the DataFrames in memory,
-    * the use of masibe DataFrames in relation with the cluster size, could requires more testing.
+    * the use of massive DataFrames in relation with the cluster size, could requires more testing.
     *
     * Is possible to use bot parallel systems at the same time, in fact is recommended.
     *
@@ -527,6 +529,14 @@ class ParallelTool (spark: SparkSession, storage:Storage, level:Level = Level.IN
     dfResults
   }
 
+  /** Implementation of parallelNoDependencies using Futures.
+    * This implementation is more complex and slower than the alternative, parallelNoDependenciesWithoutFutures,
+    * but both where keep just in case in some scenarios this option is find useful
+    *
+    * @param classToExecute class that contains all the methods that will be executed.
+    * @param functions List of the functions (name and parameters) that will be executed.
+    * @return List of the DF that return all of the functions
+    */
   private def parallelNoDependenciesWithFutures[T<:Object, A: TypeTag](classToExecute:T, functions:List[(String,List[AnyRef])]):List[DataFrame] = {
     val futureList:List[(String,Future[DataFrame])] = functions.par.map( toExecute =>{
       val futureOfFunction:(String,Future[DataFrame]) = toExecute match{
@@ -562,6 +572,15 @@ class ParallelTool (spark: SparkSession, storage:Storage, level:Level = Level.IN
     resultDF
   }
 
+  /** Implementation of parallelNoDependencies using Futures.
+    *
+    * Recommended implementation of parallelNoDependencies.
+    * Will be use as default. Is using a partitioned list to split the tasks that need to be done between the workers.
+    *
+    * @param classToExecute class that contains all the methods that will be executed.
+    * @param functions List of the functions (name and parameters) that will be executed.
+    * @return List of the DF that return all of the functions
+    */
   private def parallelNoDependenciesWithoutFutures[T<:Object, A: TypeTag](classToExecute:T, functions:List[(String,List[AnyRef])]):List[DataFrame] ={
     val resultDF:List[DataFrame] = functions.par.map {
       case (functionName, parameters) => classToExecute call(functionName, parameters: _*)
