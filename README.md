@@ -23,6 +23,9 @@ Also depending on the cluster that is available, the application will have more 
 -	Number of cores: will be decisive defining the number of task that will be executed in parallel.
 -   Current average use of the cluster: if the cluster is already under intense use, there are less opportunities to improve by using unused resources.
 
+## Example of a project using ParallelTool
+
+https://github.com/marino-serna/ParallelToolExample.git
 
 ## How to use this tool?
 
