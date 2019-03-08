@@ -2,7 +2,7 @@ package com.github.marino_serna.parallel_tool
 
 import java.lang.reflect.Method
 
-import org.apache.log4j.{Logger,Level}
+import org.apache.log4j.{Level, Logger}
 import org.apache.spark.sql.{DataFrame, SparkSession}
 import org.apache.spark.storage.StorageLevel
 
@@ -20,7 +20,10 @@ import scala.util.Failure
   * @param level print logs for the execution, including duration of the functions
   * @param futuresWithoutDependencies allow to use or not use futures when calling parallelNoDependencies, both solutions are valid
   */
-class ParallelTool (spark: SparkSession, storage:Storage, level:Level = Level.INFO, futuresWithoutDependencies:Boolean=true){
+class ParallelTool (spark: SparkSession, storage:Storage, level:Level = Level.INFO, futuresWithoutDependencies:Boolean=true,
+                    storePrioritySchema:String = null,storePriorityTable:String = "parallelToolPriority"){
+  import spark.implicits._
+
   private val logger: Logger = Logger.getLogger(getClass.getName)
   logger.setLevel(level)
   private var futures:Map[String,Future[DataFrame]] = Map[String, Future[DataFrame]]()
@@ -28,6 +31,19 @@ class ParallelTool (spark: SparkSession, storage:Storage, level:Level = Level.IN
   private var futuresFlags:Map[String,Future[Boolean]] = Map[String, Future[Boolean]]()
   private var promisesFlags:Map[String,Promise[Boolean]] = Map[String, Promise[Boolean]]()
   private var functionsToExecute:List[String] = Nil //Used for logs
+
+  private var newPriorityList:List[(String,Long)] = Nil
+
+  private lazy val priorityDF:DataFrame = storePrioritySchema match {
+    case _: String =>
+      if(storage.exists(storePrioritySchema, storePriorityTable)){
+        storage.read(storePrioritySchema, storePriorityTable)
+      }else{  // The first time is executed in this location no data will be availible
+        null
+      }
+    case _ =>
+      null
+  }
 
 
   /**
@@ -69,15 +85,25 @@ class ParallelTool (spark: SparkSession, storage:Storage, level:Level = Level.IN
       * @return
       */
     def priority(methodName:String,args:AnyRef*):Long={
-      def argTypes = args.map(_.getClass)
-      def method = klass.getClass.getMethod(methodName, argTypes:_*)
-      method.getDeclaredAnnotations.toList.map(annotation => {
-        val time:Long = annotation match {
-          case priority:PriorityExecution => priority.expectedExecutionTime()
-          case _=>0
-        }
-        time
-      }).foldLeft(0L)((processed:Long,current:Long) => processed + current)
+      priorityDF match {
+        case _:DataFrame =>
+          val priorityOfInterest:DataFrame= priorityDF.filter($"method_name" === methodName).select($"priority")
+          if(priorityOfInterest.count() > 0){
+            priorityOfInterest.take(1).head.getLong(0)
+          }else{
+            0
+          }
+        case _ => // storePriority is null
+          def argTypes = args.map(_.getClass)
+          def method = klass.getClass.getMethod(methodName, argTypes:_*)
+          method.getDeclaredAnnotations.toList.map(annotation => {
+            val time:Long = annotation match {
+              case priority:PriorityExecution => priority.expectedExecutionTime()
+              case _=>0
+            }
+            time
+          }).foldLeft(0L)((processed:Long,current:Long) => processed + current)
+      }
     }
 
     /**
@@ -134,8 +160,10 @@ class ParallelTool (spark: SparkSession, storage:Storage, level:Level = Level.IN
         finish(method, methodName, dfResult)
 
         val timeEnd = System.currentTimeMillis()
+        val timeMs:Long = timeEnd-timeOrig
         val timeMin = (timeEnd-timeOrig) /1000/60.0
-        logger.info(f" End function $methodName; Duration: $timeMin%.2f min (${timeEnd-timeOrig}ns)")
+        logger.info(f" End function $methodName; Duration: $timeMin%.2f min (${timeMs}ns)")
+        newPriorityList ::= (methodName,timeMs)
 
         dfResult
       } catch {
@@ -302,6 +330,10 @@ class ParallelTool (spark: SparkSession, storage:Storage, level:Level = Level.IN
       val error = s"Error during the execution of the functions: ${functionsWithErrors.mkString(" | ")}"
       logger.error(error)
       throw new Exception(error)
+    }
+    val newPriorities = spark.sparkContext.parallelize(newPriorityList).toDF("method_name", "priority")
+    if(storePrioritySchema != null && !storePrioritySchema.isEmpty){
+      storage.write(storePrioritySchema, storePriorityTable, newPriorities,Nil)
     }
   }
 

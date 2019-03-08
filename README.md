@@ -64,9 +64,12 @@ A useful example of implementation can be found in:
         Otherwise  will use an annotation like:
         @Store(temporal = true)
 
-    v.	Optional but recommended, adding an annotation with the time that this method takes to be executed,
-        if the application is executed with the logs activated in parallelTool, the real value will be printed.
-        This is use to optimize the sorting of methods and finding critical paths. Example:
+    v.	Since the tag 1.0.1-02 the system will update the priority of execution base of information of previous executions
+        if a schema/folder to store this information is provide: “storePrioritySchema”,
+        the table/filename “parallelToolPriority” will be unless a different name is provided.
+        Is also possible to force the priorities using annotations and not defining a value for “storePrioritySchema”, in that scenario the annotation should contain the time that this method takes to be executed, except for the methods that want to be prioritized or delayed.
+        The time that each method takes to be executed can be found in the logs of the application if the application is executed with the logs activated.
+        This annotation is use by the application to optimize the sorting of methods and finding critical paths. Example:
         @PriorityExecution(expectedExecutionTime = 66036)
 
 5.  The application will be started as follow:

@@ -26,6 +26,10 @@ class DataBaseStorage(spark: SparkSession, databasePath: String) extends Storage
     spark.read.table(s"$sourceName.$elementName")
   }
 
+  def exists(sourceName:String, elementName:String):Boolean={
+    spark.catalog.tableExists(s"$sourceName.$elementName")
+  }
+
   private val invalidTableNameCharacters:List[String] =  " "::","::";"::"\\{"::"\\}"::"\\("::"\\)"::"\n"::"\t"::"="::Nil
   private val unwantedTableNameCharacters:List[String] = "'" :: "|" :: "." ::Nil
 
